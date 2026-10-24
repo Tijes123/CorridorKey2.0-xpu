@@ -18,9 +18,9 @@ Any business or research inquiries for Zac can be directed to z.brooks.harris@gm
 
 ## Setup
 
-You need an NVIDIA GPU (currently RTX 30-series or newer) with at least 4 GB of VRAM
+You need an Intel GPU ([with support for the torch xpu backend](https://docs.pytorch.org/docs/2.14/notes/get_start_xpu.html#hardware-prerequisite)) with at least 4 GB of VRAM
 for footage up to 1440p, or 6 GB for 4K, `ffmpeg` on your PATH, and a Python
-environment with CUDA-enabled PyTorch installed. On smaller cards, see [Long Clips And Low VRAM](#long-clips-and-low-vram).
+environment with XPU-enabled PyTorch installed. On smaller cards, see [Long Clips And Low VRAM](#long-clips-and-low-vram).
 This package was tested with:
 
 ```
@@ -34,7 +34,7 @@ remaining dependencies, and download the model weights (about 5 GB):
 ```
 python -m venv venv
 source venv/bin/activate
-pip install torch==2.9.1 torchvision==0.24.1 --index-url https://download.pytorch.org/whl/cu128
+pip install torch torchvision --index-url https://download.pytorch.org/whl/xpu
 pip install -r requirements.txt
 python scripts/download_weights.py
 ```
