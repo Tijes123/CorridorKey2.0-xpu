@@ -117,7 +117,7 @@ def main():
                     default=2048)
     args = ap.parse_args()
 
-    if not torch.cuda.is_available():
+    if not torch.xpu.is_available():
         raise RuntimeError("CorridorKey v2 runtime requires a CUDA GPU.")
     require_ffmpeg(args.ffmpeg_bin)
     package_root = Path(__file__).resolve().parent
@@ -166,7 +166,7 @@ def main():
         output_format=args.output_format,
         exr_dtype=args.exr_dtype,
     )
-    model = load_model(paths, device="cuda")
+    model = load_model(paths, device="xpu")
     run_inference(
         model,
         args.input,

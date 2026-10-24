@@ -92,7 +92,7 @@ class CorridorKeyV3(nn.Module):
         rvm_variant: str = 'small',
         rvm_ckpt: str = None,
         foundation_stats_path: str = None,
-        device: str = 'cuda',
+        device: str = 'xpu',
         # Training
         gradient_checkpoint: bool = True,
         # Architecture ablation knob: overlap patchify/depatchify.

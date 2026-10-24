@@ -894,7 +894,7 @@ def _sdpa_with_region_groups(
             batch_windows, device=q.device, dtype=torch.long) * num_windows
         return (idx.unsqueeze(0) + offsets.unsqueeze(1)).reshape(-1)
 
-    out = torch.zeros_like(q)
+    out = torch.zeros(q.size(), dtype=torch.bfloat16, layout=q.layout, device=q.device)
     if full_idx:
         win_idx = _batched_windows(full_idx)
         out.index_copy_(

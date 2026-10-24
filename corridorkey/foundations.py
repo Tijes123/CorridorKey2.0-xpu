@@ -26,7 +26,7 @@ import torch.nn as nn
 # ---------------------------------------------------------------------------
 
 
-def build_moge_vitb(device='cuda', checkpoint='Ruicheng/moge-2-vitb-normal'):
+def build_moge_vitb(device='xpu', checkpoint='Ruicheng/moge-2-vitb-normal'):
     from moge.model.v2 import MoGeModel
     m = MoGeModel.from_pretrained(checkpoint)
     m = m.to(device).eval()
@@ -82,7 +82,7 @@ def _load_local_cradio_so400m(repo_path: Path):
     )
 
 
-def build_cradio_so400m(repo: str = 'nvidia/C-RADIOv4-SO400M', device='cuda'):
+def build_cradio_so400m(repo: str = 'nvidia/C-RADIOv4-SO400M', device='xpu'):
     """Build frozen C-RADIOv4-SO400M.
 
     C-RADIO's internal input conditioner expects RGB in [0, 1] unless
@@ -118,7 +118,7 @@ class FrozenFoundations(nn.Module):
     buffers hold (0, 1) so normalization is the identity.
     """
 
-    def __init__(self, device='cuda',
+    def __init__(self, device='xpu',
                  use_moge=True,
                  use_cradio: bool = False,
                  cradio_repo: str = 'nvidia/C-RADIOv4-SO400M',

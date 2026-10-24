@@ -188,9 +188,9 @@ def select_vram_profile(shape_hw, num_frames: int, budget_gb: float):
 
 
 def apply_auto_vram(cfg: InferenceConfig, shape_hw, num_frames: int) -> None:
-    free_bytes, _ = torch.cuda.mem_get_info()
+    free_bytes, _ = torch.xpu.mem_get_info()
     # Memory this process already holds (the loaded model) is part of the budget.
-    budget_gb = (free_bytes + torch.cuda.memory_reserved()) / 2**30
+    budget_gb = (free_bytes + torch.xpu.memory_reserved()) / 2**30
     chunk, stride, low_vram, estimate = select_vram_profile(shape_hw, num_frames, budget_gb)
     cfg.hann_chunk, cfg.hann_stride, cfg.low_vram = chunk, stride, low_vram
     print(f"  Auto VRAM: {budget_gb:.1f} GB available at {shape_hw[1]}x{shape_hw[0]} -> "
@@ -235,7 +235,7 @@ def load_runtime_checkpoint(path: Path) -> dict:
     return torch.load(path, map_location="cpu", weights_only=False, mmap=True)
 
 
-def load_model(paths: RuntimePaths, device: str = "cuda") -> CorridorKeyV3:
+def load_model(paths: RuntimePaths, device: str = "xpu") -> CorridorKeyV3:
     paths.validate()
     prepare_runtime_environment(paths)
     ckpt = load_runtime_checkpoint(paths.weights)
@@ -334,14 +334,14 @@ def precompute_rvm_to_memmap(model, source, meta, rvm_path: Path,
                 rgb.reshape(Tc, 3, H, W), size=(H_e, W_e),
                 mode="bilinear", align_corners=False,
             ).reshape(1, Tc, 3, H_e, W_e).clamp(0.0, 1.0)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("xpu", dtype=torch.bfloat16):
                 feats, state = model.foundations.rvm(rgb_rvm, state=state)
             feats_cpu = (feats.float().cpu() - mean) / std
             out[t0:t0 + Tc] = feats_cpu[0].numpy().astype(np.float16)
             del rgb, rgb_rvm, feats, feats_cpu, display
     out.flush()
     del out
-    torch.cuda.empty_cache()
+    torch.xpu.empty_cache()
 
 
 @torch.no_grad()
@@ -383,7 +383,7 @@ def precompute_foundations_to_memmap(model, source, meta, prefix: Path,
             Tc = display.shape[0]
             rgb = display.unsqueeze(0).to(device, non_blocking=True)
             rgb_radio, rgb_moge = _build_foundation_inputs(rgb)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("xpu", dtype=torch.bfloat16):
                 ff = model.foundations(
                     rgb_cradio=rgb_radio.reshape(Tc, 3, *rgb_radio.shape[-2:]),
                     rgb_moge=rgb_moge.reshape(Tc, 3, *rgb_moge.shape[-2:]),
@@ -397,27 +397,27 @@ def precompute_foundations_to_memmap(model, source, meta, prefix: Path,
     if cradio_out is not None:
         cradio_out.flush()
         del cradio_out
-    torch.cuda.empty_cache()
+    torch.xpu.empty_cache()
     return paths
 
 
 def _phase1_setup(model, *, stage1_on_gpu: bool = True):
-    model.foundations.cuda()
+    model.foundations.xpu()
     # Low-VRAM mode precomputes foundation features first, so stage 1 waits on CPU.
     if stage1_on_gpu:
-        model.stage1.cuda()
+        model.stage1.xpu()
     else:
         model.stage1.cpu()
     model.stage2.cpu()
-    torch.cuda.empty_cache()
+    torch.xpu.empty_cache()
 
 
 def _phase2_setup(model):
     model.foundations.cpu()
     model.stage1.cpu()
-    torch.cuda.empty_cache()
-    model.stage2.cuda()
-    torch.cuda.synchronize()
+    torch.xpu.empty_cache()
+    model.stage2.xpu()
+    torch.xpu.synchronize()
 
 
 @torch.no_grad()
@@ -512,7 +512,7 @@ def hann_stage1_stream(model, source, meta, *, reader_cls, reader_kind: str,
             if foundation_paths is None:
                 rgb_found = display_chunk.unsqueeze(0).to(device, non_blocking=True)
                 rgb_radio, rgb_moge = _build_foundation_inputs(rgb_found)
-                with torch.autocast("cuda", dtype=torch.bfloat16):
+                with torch.autocast("xpu", dtype=torch.bfloat16):
                     ff = model.foundations(
                         rgb_cradio=rgb_radio.reshape(Tc, 3, *rgb_radio.shape[-2:]),
                         rgb_moge=rgb_moge.reshape(Tc, 3, *rgb_moge.shape[-2:]),
@@ -528,7 +528,7 @@ def hann_stage1_stream(model, source, meta, *, reader_cls, reader_kind: str,
             if rvm_map is not None:
                 rvm_feat = torch.from_numpy(np.asarray(rvm_map[t0:t1]).copy())
                 rvm_feat = rvm_feat.unsqueeze(0).to(device, non_blocking=True).float()
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast("xpu", dtype=torch.bfloat16):
                 s1 = model.stage1(
                     rgb_c, hint_c, moge_feat, cradio_feat=cradio_feat,
                     rvm_feat=rvm_feat, t_stride=1.0,
@@ -565,7 +565,7 @@ def hann_stage1_stream(model, source, meta, *, reader_cls, reader_kind: str,
             del model_chunk, display_chunk, review_chunk
             flush_before(next_start)
             print(f"      window {i + 1}/{len(starts)} [{t0}:{t1}]", flush=True)
-        torch.cuda.synchronize()
+        torch.xpu.synchronize()
         flush_before(T_all + 1)
     finally:
         reader.close()
@@ -575,7 +575,7 @@ def hann_stage1_stream(model, source, meta, *, reader_cls, reader_kind: str,
     if baton_fp16 is not None:
         baton_fp16.flush()
     del baton_fp16, live_acc, live_w, rvm_map, cradio_map, moge_map
-    torch.cuda.empty_cache()
+    torch.xpu.empty_cache()
 
 
 def _crop_native_torch(x: torch.Tensor, meta: dict) -> torch.Tensor:
@@ -865,12 +865,12 @@ def run_inference(model, input_path: str, output_dir: str, cfg: InferenceConfig,
                 reader_kind=reader_kind)
             model.foundations.cpu()
             model.stage2.cpu()
-            model.stage1.cuda()
-            torch.cuda.empty_cache()
+            model.stage1.xpu()
+            torch.xpu.empty_cache()
         else:
-            model.stage2.cuda()
+            model.stage2.xpu()
             model.stage2.eval()
-            torch.cuda.empty_cache()
+            torch.xpu.empty_cache()
 
         stage2_batch = max(1, int(cfg.stage2_batch))
 
@@ -883,7 +883,7 @@ def run_inference(model, input_path: str, output_dir: str, cfg: InferenceConfig,
                 baton_np = np.stack([item[1] for item in sub], axis=0)
                 baton_t = torch.from_numpy(baton_np).unsqueeze(0)
                 baton_t = baton_t.to(device, non_blocking=True).float()
-                with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+                with torch.inference_mode(), torch.autocast("xpu", dtype=torch.bfloat16):
                     logits = model.stage2(rgb_t, baton_t)
                     if isinstance(logits, tuple):
                         logits = logits[0]
@@ -932,6 +932,6 @@ def run_inference(model, input_path: str, output_dir: str, cfg: InferenceConfig,
         safe_remove(cfg.temp_dir / f"{raw_clip_name(input_path)}_baton.f16")
         safe_remove(cfg.temp_dir / f"{raw_clip_name(input_path)}_foundation_cradio.f32")
         safe_remove(cfg.temp_dir / f"{raw_clip_name(input_path)}_foundation_moge.f32")
-        torch.cuda.empty_cache()
+        torch.xpu.empty_cache()
     print(f"  wrote {len(writers)} output video(s) for {clip_name} "
           f"({T_all} frames @ {W_out}x{H_out})")

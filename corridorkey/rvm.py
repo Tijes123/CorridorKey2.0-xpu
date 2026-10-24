@@ -550,7 +550,7 @@ def load_rvm_npz(model: RVMVideoSiamMAE, npz_path: str,
 
 
 def build_rvm(variant: str = 'small', ckpt_path: Optional[str] = None,
-               device: str = 'cuda') -> RVMVideoSiamMAE:
+               device: str = 'xpu') -> RVMVideoSiamMAE:
     """Build a frozen RVM model and optionally load weights from NPZ."""
     model = RVMVideoSiamMAE(variant=variant).to(device)
     if ckpt_path is not None:
